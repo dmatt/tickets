@@ -173,17 +173,55 @@ app.post('/', function (req, res) {
       console.timeEnd("status")
     }
   }
+  
+  /* 
+  
+  TODO: 3 Desk API calls for case data using callbacks
+  
+  desk.case(text, {}, function(error, data) {
+    if (error) empty()
+    desk.customer(data.href/id, {}, function(error, data) {
+      if (error) empty()
+      desk.user(data.href/id, {}, function(error, data) {
+        if (error) empty()
+        caseCard(customer,user,other params)
+    })
+  })
+})  
+  
+  case() {
+  
+  desk.customer(href/id, {}, function(error, data) {
+  
+  caseCard(params)
+  
+  })
+  
+  }
+  
+  */
+  
   // Return case that matches case id
   function caseIdSearch(text) {
-    desk.get("cases", {case_id: text}, function(error, data) {
-      if (data._embedded.entries.length > 0) {
+    desk.case(text, {}, function(error, data) {
+      console.log("DATA",data)
+      if (data !== null) {
+        // caseCard(text, status, customerName, id, subject, blurb, labels, assigned, ts)
+        var attachement = caseCard(
+          null,
+          data.status,
+          data.id,
+          data.subject,
+          data.blurb,
+          data.labels.toString(),
+          data.received_at
+        )
         res.send(
           {
             "response_type": "in_channel",
-            "text": JSON.stringify(data._embedded.entries[0].blurb),
+            "attachments": [attachement],
           }
         );
-        console.dir(data)
       } else if (data._embedded.entries.length < 1) {
         empty()
       } else {
@@ -208,6 +246,31 @@ app.post('/', function (req, res) {
         help()
       }
     });
+  }
+  // Return case attachment from Desk search
+  function caseCard(text, status, id, subject, blurb, labels, ts) {
+    var attachement = {
+      "pretext": status + " case from " + 'customerName',
+      "fallback": status + " case from " + "customerName" + "- #" + id + ": "+ subject,
+      "title": "#" + id + ": "+ subject,
+      "title_link": "https://help.disqus.com/agent/case/"+id,
+      "text": blurb,
+      "fields": [
+        {
+          "title": "Assigned",
+          "value": "assigned",
+          "short": true
+        },
+        {
+          "title": "Labels",
+          "value": labels,
+          "short": true
+        }
+      ],
+      "color": "#7CD197",
+      "ts": ts
+    }
+    return attachement
   }
   // Return help text with examples
   function help() {

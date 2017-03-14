@@ -28,7 +28,8 @@ app.post('/', function (req, res) {
       status()
       // TODO: regex should validate the full Desk link, not ID
     } else if (/^[0-9]{1,7}$/.test(req.body.text.split('case/')[1])) {
-      caseIdSearch(req.body.text.split('case/')[1])
+      caseAttachment(req.body.text.split('case/')[1])
+      // TODO: regex for email recognition
     } else if (req.body.text === "archon810@gmail.com") {
       emailSearch(req.body.text)
     } else if (req.body.text === "help") {
@@ -173,55 +174,46 @@ app.post('/', function (req, res) {
       console.timeEnd("status")
     }
   }
-  
-  /* 
-  
-  TODO: 3 Desk API calls for case data using callbacks
-  
-  desk.case(text, {}, function(error, data) {
-    if (error) empty()
-    desk.customer(data.href/id, {}, function(error, data) {
-      if (error) empty()
-      desk.user(data.href/id, {}, function(error, data) {
-        if (error) empty()
-        caseCard(customer,user,other params)
-    })
-  })
-})  
-  
-  case() {
-  
-  desk.customer(href/id, {}, function(error, data) {
-  
-  caseCard(params)
-  
-  })
-  
-  }
-  
-  */
-  
-  // Return case that matches case id
-  function caseIdSearch(text) {
-    desk.case(text, {}, function(error, data) {
-      console.log("DATA",data)
+
+  // When given case ID, get and send all case, customer, and assigned user details to slack
+  function caseAttachment(id) {
+    desk.case(id, {}, function(error, data) {
       if (data !== null) {
-        // caseCard(text, status, customerName, id, subject, blurb, labels, assigned, ts)
-        var attachement = caseCard(
-          null,
-          data.status,
-          data.id,
-          data.subject,
-          data.blurb,
-          data.labels.toString(),
-          data.received_at
-        )
-        res.send(
-          {
-            "response_type": "in_channel",
-            "attachments": [attachement],
+        var caseData = data
+        desk.customer(caseData._links.customer.href.split("customers/")[1], {}, function(error, data) {
+          if (data !== null) {
+            var customerData = data
+            if (data !== null) {
+              desk.user(caseData._links.assigned_user.href.split("users/")[1], {}, function(error, data) {
+                console.log("woo!",caseData.id,customerData.display_name,customerData.avatar,data.public_name)
+                // function caseCard(text, status, id, subject, blurb, labels, ts, customer, company, customerGrav, assigned)
+                var attachment = caseCard(
+                  null,
+                  caseData.status,
+                  caseData.id,
+                  caseData.subject,
+                  caseData.blurb,
+                  caseData.labels.toString(),
+                  caseData.received_at,
+                  customerData.display_name,
+                  customerData.company,
+                  customerData.avatar,
+                  data.public_name
+                )
+                res.send(
+                  {
+                    "response_type": "in_channel",
+                    "attachments": [attachment],
+                  }
+                );
+              })
+            } else {
+              help()
+            }
+          } else {
+            help()
           }
-        );
+        })
       } else if (data._embedded.entries.length < 1) {
         empty()
       } else {
@@ -229,17 +221,11 @@ app.post('/', function (req, res) {
       }
     });
   }
-  // Return case that matches email
-  function emailSearch(text) {
-    desk.get("cases", {case_id: text}, function(error, data) {
+  // Returns most recent case ids that matches email
+  function emailSearch(email) {
+    desk.get("cases", {case_id: email}, function(error, data) {
       if (data._embedded.entries.length > 0) {
-        res.send(
-          {
-            "response_type": "in_channel",
-            "text": JSON.stringify(data._embedded.entries[0].blurb),
-          }
-        );
-        console.dir(data)
+        return // TODO: call caseAttachment(id) with ID
       } else if (data._embedded.entries.length < 1) {
         empty()
       } else {
@@ -247,18 +233,24 @@ app.post('/', function (req, res) {
       }
     });
   }
-  // Return case attachment from Desk search
-  function caseCard(text, status, id, subject, blurb, labels, ts) {
+  
+  // Returns a single case attachment using data from 
+  function caseCard(text, status, id, subject, blurb, labels, ts, customer, company, customerGrav, assigned) {
+    if (company) {
+      company = "("+company+")"
+    }
     var attachement = {
-      "pretext": status + " case from " + 'customerName',
-      "fallback": status + " case from " + "customerName" + "- #" + id + ": "+ subject,
+      "pretext": status + " case from " + customer + " " + company,
+      "fallback": status + " case from " + customer + " " + company + "- #" + id + ": "+ subject,
+      "author_icon": customerGrav,
+      "author_name":  customer + " " + company,
       "title": "#" + id + ": "+ subject,
       "title_link": "https://help.disqus.com/agent/case/"+id,
       "text": blurb,
       "fields": [
         {
           "title": "Assigned",
-          "value": "assigned",
+          "value": assigned,
           "short": true
         },
         {

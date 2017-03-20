@@ -58,11 +58,10 @@ app.post('/', function (req, res) {
           labels:['Priority publisher,SaaS Ads,Direct publisher,Community publisher,Home,Community commenter'], 
           status:['new,open'], 
           sort_field:'created_at', 
-          sort_direction: 'asc', 
+          sort_direction: 'asc',
           per_page:100, 
           page:i
         }, function(error, data) {
-          console.log(i,Math.ceil(data.total_entries/100))
           if (i <= Math.ceil(data.total_entries/100)) {
             dataEntries = dataEntries.concat(data._embedded.entries)           
             i++
@@ -141,12 +140,15 @@ app.post('/', function (req, res) {
           Channel:[channelFilter.length,channelNew.length,channelOpen,30],
           Commenter:[commenterFilter.length,commenterNew.length,commenterOpen,60],
         }
-      }    
+      }
     // Build and send the message with data from each filter
     function slackSend() {
+      var total = 0
       var attachments = []
       var statusColor
       Object.keys(stats).map(function(objectKey, i) {
+        total += stats[objectKey][0]
+        console.log(stats[objectKey], stats[objectKey][0], total)
         if (stats[objectKey][0] > stats[objectKey][3]) {
           statusColor = disqusRed
           statusIcon = "🔥"
@@ -167,7 +169,7 @@ app.post('/', function (req, res) {
       res.send(
           {
             "response_type": "in_channel",
-            "text": "Here's our status:",
+            "text": total + " total cases right now.",
             "attachments": attachments
           }
       );
@@ -185,7 +187,6 @@ app.post('/', function (req, res) {
             var customerData = data
             if (data !== null) {
               desk.user(caseData._links.assigned_user.href.split("users/")[1], {}, function(error, data) {
-                console.log("woo!",caseData.id,customerData.display_name,customerData.avatar,data.public_name)
                 // function caseCard(text, status, id, subject, blurb, labels, ts, customer, company, customerGrav, assigned)
                 var attachment = caseCard(
                   null,
@@ -194,7 +195,7 @@ app.post('/', function (req, res) {
                   caseData.subject,
                   caseData.blurb,
                   caseData.labels.toString(),
-                  caseData.received_at,
+                  Date.parse(caseData.received_at)/1000,
                   customerData.display_name,
                   customerData.company,
                   customerData.avatar,

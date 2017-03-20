@@ -190,30 +190,49 @@ app.post('/', function (req, res) {
               if (caseData._links.assigned_user) {
                 desk.user(caseData._links.assigned_user.href.split("users/")[1], {}, function(error, data) {
                   if (data) {
-                    assignedName = data.public_name
+                    var attachment = caseCard(
+                      null,
+                      caseData.status,
+                      caseData.id,
+                      caseData.subject,
+                      caseData.blurb,
+                      caseData.labels.toString(),
+                      Date.parse(caseData.received_at)/1000,
+                      customerData.display_name,
+                      customerData.company,
+                      customerData.avatar,
+                      data.public_name
+                    )
+                    res.send(
+                      {
+                        "response_type": "in_channel",
+                        "attachments": [attachment],
+                      }
+                    )
                   }
                 })
+              } else {
+                // function caseCard(text, status, id, subject, blurb, labels, ts, customer, company, customerGrav, assigned)
+                var attachment = caseCard(
+                  null,
+                  caseData.status,
+                  caseData.id,
+                  caseData.subject,
+                  caseData.blurb,
+                  caseData.labels.toString(),
+                  Date.parse(caseData.received_at)/1000,
+                  customerData.display_name,
+                  customerData.company,
+                  customerData.avatar,
+                  null
+                )
+                res.send(
+                  {
+                    "response_type": "in_channel",
+                    "attachments": [attachment],
+                  }
+                );
               }
-              // function caseCard(text, status, id, subject, blurb, labels, ts, customer, company, customerGrav, assigned)
-              var attachment = caseCard(
-                null,
-                caseData.status,
-                caseData.id,
-                caseData.subject,
-                caseData.blurb,
-                caseData.labels.toString(),
-                Date.parse(caseData.received_at)/1000,
-                customerData.display_name,
-                customerData.company,
-                customerData.avatar,
-                assignedName
-              )
-            res.send(
-              {
-                "response_type": "in_channel",
-                "attachments": [attachment],
-              }
-            );
             } else {
               help()
             }
@@ -245,6 +264,9 @@ app.post('/', function (req, res) {
   function caseCard(text, status, id, subject, blurb, labels, ts, customer, company, customerGrav, assigned) {
     if (company) {
       company = "("+company+")"
+    }
+    if (!assigned) {
+      assigned = "Nobody"
     }
     var attachement = {
       "pretext": status + " case from " + customer + " " + company,

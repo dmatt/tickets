@@ -22,7 +22,8 @@ var Twitter = require('twit'),
   },
   T = new Twitter(config.twitter),
   dmCounter = 0,
-  dmsToRead="";
+  twitterDMs={},
+  twitterDMsSent={};
 
 // Elements for output message
 const disqusRed = '#e76c35'
@@ -41,7 +42,6 @@ glitchup();
 app.use(bodyParser.urlencoded({extended: false}));
 
 app.get('/cron-'+process.env.CRON_KEY, function (req, res) {
-  console.log("🍆",res);
   status(res,'notification');
 })
 
@@ -193,30 +193,38 @@ app.post('/', function (req, res) {
     return attachement
   }
   
-  // Find the last DM we read, and process new ones since then
+  // Find the last 10 recieved and sent DMs and count those without replies (there's no read/unread state via API 
+  // https://twittercommunity.com/t/please-let-me-know-if-we-can-get-unread-messages-id-from-twitter-api-1-1/11745/2 )
+  
   function getDMs() {
+    dmCounter = 0
     return new Promise(function(resolve, reject) {
-      T.get('direct_messages', { count: 100 }, function(err, dms, response) {
-        console.log("dms length ---------->", dms.length)
-        if (dms.length) {
-          dmCounter = dms.length;
-          // We got the last DM, so we begin processing DMs from there
-          tellMeDMs(dms, function(pdms){
+      T.get('direct_messages', { count: 30 }, function(err, dms, response) {
+        twitterDMs = dms;
+        T.get('direct_messages/sent', { count: 30 }, function(err, dmsSent, response) {
+          twitterDMsSent = dmsSent;
+          // We have DMs and Sent DMs so we can compare and count
+          if (dms.length && dmsSent.length ) {
+            // Search for each DM sender in sent object and increment counter if not found 
+            dms.forEach( function (obj, i) {
+               console.log("obj.sender.id ", obj.sender.id)
+               console.log("length of match obj.sender.id -> dmSent.recipient.id", dmsSent.filter(dmSent => (dmSent.recipient.id === obj.sender.id)).length)
+              if (dmsSent.filter(dmSent => (dmSent.recipient.id === obj.sender.id)).length < 1) {
+                dmCounter++
+              }
+            });
+            // We got the last DM, so we begin processing DMs from there
             res.send('Wow, you have '+dmCounter+' DMs on Twitter.');
             resolve(dms);
-          });
-        } else {
-          // We've never received any DMs at all, so we can't do anything yet
-          console.log('This user has no DMs. Send one to it to kick things off!');
-          resolve("This user has no DMs. Send one to it to kick things off.");
-        }
+          } else {
+            // We've never received any DMs at all, so we can't do anything yet
+            console.log('This user has no DMs. Send one to it to kick things off!');
+            resolve("This user has no DMs. Send one to it to kick things off.");
+          }
+        });        
       });
     });
   }
-
-  function tellMeDMs(dms) {
-    //console.log(dms);
-  };  
   
   // Return CSAT digest
   function csat() {
@@ -357,6 +365,7 @@ function status(res,type) {
         Community:[communityFilter.length,communityNew.length,communityOpen,30],
         Channel:[channelFilter.length,channelNew.length,channelOpen,30],
         Commenter:[commenterFilter.length,commenterNew.length,commenterOpen,60],
+        // Twitter: [dmCounter, dmCounter, dmCounter, 3],
       }
     }
   // Build and send the message with data from each filter
@@ -399,6 +408,14 @@ function status(res,type) {
     //store(stats);
   }
 }
+
+app.get('/twitter', function (req, res) {
+  res.send(twitterDMs)
+})
+
+app.get('/twitter_sent', function (req, res) {
+  res.send(twitterDMsSent)
+})
 
 function webhook(message) {
   request.post(

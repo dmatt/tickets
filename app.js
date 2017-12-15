@@ -1,7 +1,7 @@
 const express = require('express')
 const app = express()
 const bodyParser = require('body-parser')
-var request = require('request');
+const request = require('request');
 const desk = require('./my-desk').createClient({
   subdomain: 'help',
   consumer_key: process.env.CONSUMER_KEY,
@@ -10,7 +10,7 @@ const desk = require('./my-desk').createClient({
   token_secret: process.env.TOKEN_SECRET
 });
 
-var Twitter = require('twit'),
+let Twitter = require('twit'),
   config = { // Be sure to update the .env file with your API keys 
     twitter: {
       consumer_key: process.env.TWITTER_CONSUMER_KEY,
@@ -80,16 +80,16 @@ app.post('/', function (req, res) {
   function caseAttachment(id) {
     desk.case(id, {}, function(error, data) {
       if (data !== null) {
-        var caseData = data
+        let caseData = data
         desk.customer(caseData._links.customer.href.split("customers/")[1], {}, function(error, data) {
           if (data !== null) {
-            var customerData = data
+            let customerData = data
             if (data !== null) {
-              var assignedName = 'Nobody'
+              let assignedName = 'Nobody'
               if (caseData._links.assigned_user) {
                 desk.user(caseData._links.assigned_user.href.split("users/")[1], {}, function(error, data) {
                   if (data) {
-                    var attachment = caseCard(
+                    let attachment = caseCard(
                       null,
                       caseData.status,
                       caseData.id,
@@ -112,7 +112,7 @@ app.post('/', function (req, res) {
                 })
               } else {
                 // function caseCard(text, status, id, subject, blurb, labels, ts, customer, company, customerGrav, assigned)
-                var attachment = caseCard(
+                let attachment = caseCard(
                   null,
                   caseData.status,
                   caseData.id,
@@ -167,7 +167,7 @@ app.post('/', function (req, res) {
     if (!assigned) {
       assigned = "Nobody"
     }
-    var attachement = {
+    let attachement = {
       "pretext": status + " case from " + customer + " " + company,
       "fallback": status + " case from " + customer + " " + company + "- #" + id + ": "+ subject,
       "author_icon": customerGrav,
@@ -193,35 +193,44 @@ app.post('/', function (req, res) {
     return attachement
   }
   
-  // Find the last 10 recieved and sent DMs and count those without replies (there's no read/unread state via API 
-  // https://twittercommunity.com/t/please-let-me-know-if-we-can-get-unread-messages-id-from-twitter-api-1-1/11745/2 )
+  // does something
+  function uniqueMap(a, key) {
+    let keysArray = [];
+    let uniqueArray = [];
+    a.forEach( obj => keysArray.push(obj[key]));
+    a.forEach( obj => keysArray.indexOf(obj[key]) === keysArray.lastIndexOf(obj[key]) ? uniqueArray.push(obj) : console.log(obj[key] + " not unique. Skipped."))
+    console.log(uniqueArray)
+    return uniqueArray;
+  }
   
   function getDMs() {
     dmCounter = 0
     return new Promise(function(resolve, reject) {
-      T.get('direct_messages', { count: 30 }, function(err, dms, response) {
+      T.get('direct_messages', { count: 50 }, function(err, dms, response) {
         twitterDMs = dms;
-        T.get('direct_messages/sent', { count: 30 }, function(err, dmsSent, response) {
-          twitterDMsSent = dmsSent;
-          // We have DMs and Sent DMs so we can compare and count
-          if (dms.length && dmsSent.length ) {
-            // Search for each DM sender in sent object and increment counter if not found 
-            dms.forEach( function (obj, i) {
-               console.log("obj.sender.id ", obj.sender.id)
-               console.log("length of match obj.sender.id -> dmSent.recipient.id", dmsSent.filter(dmSent => (dmSent.recipient.id === obj.sender.id)).length)
-              if (dmsSent.filter(dmSent => (dmSent.recipient.id === obj.sender.id)).length < 1) {
-                dmCounter++
-              }
-            });
-            // We got the last DM, so we begin processing DMs from there
-            res.send('Wow, you have '+dmCounter+' DMs on Twitter.');
-            resolve(dms);
-          } else {
-            // We've never received any DMs at all, so we can't do anything yet
-            console.log('This user has no DMs. Send one to it to kick things off!');
-            resolve("This user has no DMs. Send one to it to kick things off.");
-          }
-        });        
+        if (dms.length) {
+          T.get('direct_messages/sent', { count: 50 }, function(err, dmsSent, response) {
+            twitterDMsSent = dmsSent;
+            // We have Sent DMs so we can compare and count
+            if (dmsSent.length ) {
+              const uniqueDms = uniqueMap(dms, "sender_id")
+              // Search for each DM sender in sent object and increment counter if not found 
+              uniqueDms.forEach( function (obj, i) {
+                if (dmsSent.filter(dmSent => (dmSent.recipient.id === obj.sender.id)).length < 1) {
+                  dmCounter++
+                }
+              });
+              // We got the last DM, so we begin processing DMs from there
+              res.send({ "response_type": "in_channel",
+                        "text": 'Wow, you have '+dmCounter+' DMs on Twitter.'});
+              resolve(dms);
+            } else {
+              // We've never received any DMs at all, so we can't do anything yet
+              console.log('This user has no DMs. Send one to it to kick things off!');
+              resolve("This user has no DMs. Send one to it to kick things off.");
+            }
+          });
+        }
       });
     });
   }
@@ -259,7 +268,7 @@ app.post('/', function (req, res) {
 // Handle each command, and return relevant information to slack
 // Return stats on all case filters from Desk
 function status(res,type) {
-    var dataEntries = []
+    let dataEntries = []
     // Recursively call Desk until there are no more pages of results
     let i = 1
     function getOpenCases() {

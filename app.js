@@ -1,7 +1,7 @@
 const express = require('express')
 const app = express()
 const bodyParser = require('body-parser')
-var request = require('request');
+const request = require('request');
 const desk = require('./my-desk').createClient({
   subdomain: 'help',
   consumer_key: process.env.CONSUMER_KEY,
@@ -10,7 +10,7 @@ const desk = require('./my-desk').createClient({
   token_secret: process.env.TOKEN_SECRET
 });
 
-var Twitter = require('twit'),
+let Twitter = require('twit'),
   config = { // Be sure to update the .env file with your API keys 
     twitter: {
       consumer_key: process.env.TWITTER_CONSUMER_KEY,
@@ -22,7 +22,8 @@ var Twitter = require('twit'),
   },
   T = new Twitter(config.twitter),
   dmCounter = 0,
-  dmsToRead="";
+  twitterDMs={},
+  twitterDMsSent={};
 
 // Elements for output message
 const disqusRed = '#e76c35'
@@ -41,7 +42,6 @@ glitchup();
 app.use(bodyParser.urlencoded({extended: false}));
 
 app.get('/cron-'+process.env.CRON_KEY, function (req, res) {
-  console.log("🍆",res);
   status(res,'notification');
 })
 
@@ -80,16 +80,16 @@ app.post('/', function (req, res) {
   function caseAttachment(id) {
     desk.case(id, {}, function(error, data) {
       if (data !== null) {
-        var caseData = data
+        let caseData = data
         desk.customer(caseData._links.customer.href.split("customers/")[1], {}, function(error, data) {
           if (data !== null) {
-            var customerData = data
+            let customerData = data
             if (data !== null) {
-              var assignedName = 'Nobody'
+              let assignedName = 'Nobody'
               if (caseData._links.assigned_user) {
                 desk.user(caseData._links.assigned_user.href.split("users/")[1], {}, function(error, data) {
                   if (data) {
-                    var attachment = caseCard(
+                    let attachment = caseCard(
                       null,
                       caseData.status,
                       caseData.id,
@@ -112,7 +112,7 @@ app.post('/', function (req, res) {
                 })
               } else {
                 // function caseCard(text, status, id, subject, blurb, labels, ts, customer, company, customerGrav, assigned)
-                var attachment = caseCard(
+                let attachment = caseCard(
                   null,
                   caseData.status,
                   caseData.id,
@@ -167,7 +167,7 @@ app.post('/', function (req, res) {
     if (!assigned) {
       assigned = "Nobody"
     }
-    var attachement = {
+    let attachement = {
       "pretext": status + " case from " + customer + " " + company,
       "fallback": status + " case from " + customer + " " + company + "- #" + id + ": "+ subject,
       "author_icon": customerGrav,
@@ -193,30 +193,47 @@ app.post('/', function (req, res) {
     return attachement
   }
   
-  // Find the last DM we read, and process new ones since then
+  // does something
+  function uniqueMap(a, key) {
+    let keysArray = [];
+    let uniqueArray = [];
+    a.forEach( obj => keysArray.push(obj[key]));
+    a.forEach( obj => keysArray.indexOf(obj[key]) === keysArray.lastIndexOf(obj[key]) ? uniqueArray.push(obj) : console.log(obj[key] + " not unique. Skipped."))
+    console.log(uniqueArray)
+    return uniqueArray;
+  }
+  
   function getDMs() {
+    dmCounter = 0
     return new Promise(function(resolve, reject) {
-      T.get('direct_messages', { count: 100 }, function(err, dms, response) {
-        console.log("dms length ---------->", dms.length)
+      T.get('direct_messages', { count: 50 }, function(err, dms, response) {
+        twitterDMs = dms;
         if (dms.length) {
-          dmCounter = dms.length;
-          // We got the last DM, so we begin processing DMs from there
-          tellMeDMs(dms, function(pdms){
-            res.send('Wow, you have '+dmCounter+' DMs on Twitter.');
-            resolve(dms);
+          T.get('direct_messages/sent', { count: 50 }, function(err, dmsSent, response) {
+            twitterDMsSent = dmsSent;
+            // We have Sent DMs so we can compare and count
+            if (dmsSent.length ) {
+              const uniqueDms = uniqueMap(dms, "sender_id")
+              // Search for each DM sender in sent object and increment counter if not found 
+              uniqueDms.forEach( function (obj, i) {
+                if (dmsSent.filter(dmSent => (dmSent.recipient.id === obj.sender.id)).length < 1) {
+                  dmCounter++
+                }
+              });
+              // We got the last DM, so we begin processing DMs from there
+              res.send({ "response_type": "in_channel",
+                        "text": 'Wow, you have '+dmCounter+' DMs on Twitter.'});
+              resolve(dms);
+            } else {
+              // We've never received any DMs at all, so we can't do anything yet
+              console.log('This user has no DMs. Send one to it to kick things off!');
+              resolve("This user has no DMs. Send one to it to kick things off.");
+            }
           });
-        } else {
-          // We've never received any DMs at all, so we can't do anything yet
-          console.log('This user has no DMs. Send one to it to kick things off!');
-          resolve("This user has no DMs. Send one to it to kick things off.");
         }
       });
     });
   }
-
-  function tellMeDMs(dms) {
-    //console.log(dms);
-  };  
   
   // Return CSAT digest
   function csat() {
@@ -251,7 +268,7 @@ app.post('/', function (req, res) {
 // Handle each command, and return relevant information to slack
 // Return stats on all case filters from Desk
 function status(res,type) {
-    var dataEntries = []
+    let dataEntries = []
     // Recursively call Desk until there are no more pages of results
     let i = 1
     function getOpenCases() {
@@ -357,6 +374,7 @@ function status(res,type) {
         Community:[communityFilter.length,communityNew.length,communityOpen,30],
         Channel:[channelFilter.length,channelNew.length,channelOpen,30],
         Commenter:[commenterFilter.length,commenterNew.length,commenterOpen,60],
+        // Twitter: [dmCounter, dmCounter, dmCounter, 3],
       }
     }
   // Build and send the message with data from each filter
@@ -399,6 +417,14 @@ function status(res,type) {
     //store(stats);
   }
 }
+
+app.get('/twitter', function (req, res) {
+  res.send(twitterDMs)
+})
+
+app.get('/twitter_sent', function (req, res) {
+  res.send(twitterDMsSent)
+})
 
 function webhook(message) {
   request.post(
